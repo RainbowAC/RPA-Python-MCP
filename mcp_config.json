@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "rpa-python": {
+      "command": "python",
+      "args": [
+        "mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}

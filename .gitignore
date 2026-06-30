@@ -25,3 +25,6 @@
 
 # exclude custom js functions 
 /tagui_local.js
+
+# exclude virtual environment
+/.venv
