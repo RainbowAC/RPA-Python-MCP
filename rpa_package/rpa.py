@@ -69,7 +69,7 @@ tagui_location = _engine.tagui_location
 setup = _engine.setup
 
 __all__ = [
-    'r', 'init', 'close', 'send', 'url', 'click', 'rclick', 'dclick', 'hover',
+    'r', 'TaguiEngine', 'init', 'close', 'send', 'url', 'click', 'rclick', 'dclick', 'hover',
     'type', 'select', 'read', 'snap', 'snap_page', 'snap_element', 'table',
     'upload', 'title', 'text', 'timer', 'frame', 'popup', 'dom',
     'exist', 'present', 'count', 'keyboard', 'mouse', 'vision',

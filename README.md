@@ -1,6 +1,6 @@
 # RPA for Python
 
-简单而强大的 Python 机器人流程自动化（RPA）库，用于自动化操作网页、桌面应用和命令行。内置 MCP（Model Context Protocol）集成，支持 AI 助手直接调用 RPA 能力。
+简单而强大的 Python 机器人流程自动化（RPA）库，支持浏览器自动化、桌面应用自动化和命令行操作。内置 MCP（Model Context Protocol）集成，AI 助手可直接调用 RPA 能力。
 
 [![Python](https://img.shields.io/badge/Python-3.6%20%7C%203.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://www.apache.org/licenses/LICENSE-2.0)
@@ -8,12 +8,35 @@
 
 ---
 
+## 项目结构
+
+```
+RPA-Python-master/
+├── rpa_package/              # 核心 RPA 引擎包
+│   ├── __init__.py
+│   ├── rpa.py                # 面向用户的 API（import rpa as r）
+│   ├── setup.py              # 包内 TagUI 部署逻辑
+│   └── core/
+│       ├── engine.py         # 引擎核心，方法分发
+│       ├── config.py         # 配置管理
+│       ├── exceptions.py     # 自定义异常
+│       └── io_helpers.py     # 文件/IO 辅助
+├── mcp_server.py             # MCP 服务器，暴露 40+ 个 MCP 工具
+├── mcp_config.json           # MCP 客户端配置模板
+├── sample.py                 # MCP 工具调用完整示例
+├── tagui.py                  # 顶层 TagUI 兼容模块
+├── setup.py                  # 项目安装配置
+└── README.md
+```
+
+---
+
 ## 特性
 
 - **简单 API**：`import rpa as r` 即可开始，一行代码完成浏览器导航、点击、输入等操作
-- **浏览器自动化**：基于 Chrome DevTools Protocol，支持 Chrome 浏览器和 Headless 无头模式
+- **浏览器自动化**：基于 Chrome DevTools Protocol，支持 Chrome 和 Headless 无头模式
 - **视觉自动化**：基于 SikuliX 图像识别，支持桌面应用的 GUI 自动化
-- **MCP 集成**：内置 MCP 服务器，AI 助手（如 Claude、ChatGPT）可通过标准协议操控浏览器和桌面
+- **MCP 集成**：内置 MCP 服务器，AI 助手（如 Claude、Cursor）可通过标准协议操控浏览器和桌面
 - **跨平台**：支持 Windows、macOS、Linux
 - **自动部署**：首次使用时自动下载安装 TagUI 引擎（~200MB），无需手动配置
 
@@ -25,7 +48,7 @@
 pip install rpa
 ```
 
-如果需要 MCP 集成支持：
+MCP 集成支持：
 
 ```bash
 pip install rpa[mcp]
@@ -38,36 +61,20 @@ pip install rpa[mcp]
 ```python
 import rpa as r
 
-# 初始化，启动 Chrome 浏览器
 r.init()
-
-# 导航到 Google
 r.url('https://www.google.com')
-
-# 在搜索框中输入关键词并回车
 r.type('q', 'decentralization[enter]')
-
-# 获取页面标题
 print(r.title())
-
-# 截图保存
 r.snap('page', 'results.png')
-
-# 关闭浏览器
 r.close()
 ```
 
 ### 更多模式
 
 ```python
-# 视觉自动化模式（桌面应用自动化）
-r.init(visual_automation=True)
-
-# 无头模式（不显示浏览器窗口）
-r.init(headless_mode=True)
-
-# Turbo 加速模式
-r.init(turbo_mode=True)
+r.init(visual_automation=True)   # 视觉自动化（桌面应用）
+r.init(headless_mode=True)       # 无头模式
+r.init(turbo_mode=True)          # Turbo 加速
 ```
 
 ---
@@ -107,7 +114,7 @@ r.init(turbo_mode=True)
 | `type(identifier, text)` | 在输入框中输入文本，支持特殊键如 `[enter]`、`[tab]`、`[clear]` |
 | `select(identifier, option)` | 在下拉选择框中选择选项 |
 | `keyboard(keys)` | 发送键盘组合键（需 visual_automation），如 `[ctrl]c` |
-| `mouse(action)` | 发送鼠标按下/释放事件（需 visual_automation），如 `down`、`up` |
+| `mouse(action)` | 发送鼠标按下/释放事件（需 visual_automation） |
 
 ### 信息读取
 
@@ -189,24 +196,15 @@ r.init(turbo_mode=True)
 | `error(enable)` | 开启/关闭错误模式（抛出异常 vs 打印错误） |
 | `tagui_location(path)` | 设置/获取 TagUI 安装路径 |
 
-### 部署工具
-
-| 方法 | 说明 |
-|------|------|
-| `pack()` | 打包本地 TagUI 安装为离线部署包 |
-| `update()` | 更新已有离线部署的 TagUI 版本 |
-| `bin()` | 上传文件到在线存储获取分享链接 |
-
 ---
 
 ## MCP 集成
 
-RPA for Python 内置 MCP（Model Context Protocol）服务器，让 AI 助手能够直接调用 RPA 自动化能力。
+RPA for Python 内置 MCP 服务器，让 AI 助手能够直接调用 RPA 自动化能力。
 
 ### 启动 MCP 服务器
 
 ```bash
-# 直接运行
 python mcp_server.py
 
 # 或通过控制台入口
@@ -215,36 +213,40 @@ rpa-mcp
 
 ### 在 AI 客户端中配置
 
-在 Claude Desktop 或其他 MCP 客户端的配置文件中添加：
+参考 [mcp_config.json](mcp_config.json)，在 Claude Desktop 或其他 MCP 客户端中添加：
 
 ```json
 {
   "mcpServers": {
     "rpa-python": {
       "command": "python",
-      "args": ["-m", "mcp_server"],
-      "cwd": "/path/to/RPA-Python-master"
+      "args": ["mcp_server.py"],
+      "env": {}
     }
   }
 }
 ```
 
-### 可用的 MCP 工具（40+）
+### MCP 工具调用示例
 
-所有 API 方法都通过 MCP 工具暴露，命名规则为 `rpa_` 前缀：
+参见 [sample.py](sample.py) — 完整演示了全部 40+ 个 MCP 工具的调用方式：
 
-| MCP 工具 | 对应方法 |
-|----------|----------|
-| `rpa_init` | `init()` |
-| `rpa_url` | `url()` |
-| `rpa_click` | `click()` |
-| `rpa_type` | `type()` |
-| `rpa_read` | `read()` |
-| `rpa_snap` | `snap()` |
-| `rpa_exist` | `exist()` |
-| `rpa_wait` | `wait()` |
-| `rpa_status` | 引擎状态查询 |
-| ... | 共 40+ 个工具 |
+```bash
+python sample.py
+```
+
+示例涵盖：
+
+| 场景 | 涉及工具 |
+|------|----------|
+| 文件操作 + 文本处理 | `dump / write / load / get_text / del_chars / coord` |
+| 系统命令 + 配置 | `run / echo / tagui_location / debug / error` |
+| 浏览器基础操作 | `init → status → timeout → send → url → title → timer → present → count → exist → type → read → text → dom → close` |
+| 浏览器交互 | `click / hover / dclick / rclick / select / snap / snap_element` |
+
+### 可用 MCP 工具（40+）
+
+所有 API 方法均通过 MCP 工具暴露，命名规则为 `rpa_` 前缀，参数与 API 方法一一对应。
 
 ---
 
@@ -296,13 +298,11 @@ import rpa as r
 
 r.init()
 r.url('https://httpbin.org/forms/post')
-
 r.type('input[name="custname"]', '张三')
 r.type('input[name="custtel"]', '13800138000')
 r.type('input[name="custemail"]', 'zhangsan@example.com')
 r.select('select[name="size"]', 'medium')
 r.type('input[name="delivery"]', '2025-01-15')
-
 r.click('button[type="submit"]')
 print(r.read('body'))
 r.close()
@@ -316,16 +316,12 @@ import rpa as r
 r.init()
 r.url('https://www.example.com/data')
 
-# 等待表格加载
 if r.exist('table.data-table'):
-    # 保存表格为 CSV
     r.table('table.data-table', 'data.csv')
     print('数据已保存到 data.csv')
 
-# 读取页面文本
 content = r.read('page')
 print(content)
-
 r.close()
 ```
 
@@ -335,17 +331,10 @@ r.close()
 import rpa as r
 
 r.init(visual_automation=True)
-
-# 切换到计算器
 r.focus('Calculator')
-
-# 点击按钮（使用图像识别）
 r.click('button_7.png')
-
-# 获取剪贴板内容
 text = r.clipboard()
 print(text)
-
 r.close()
 ```
 
