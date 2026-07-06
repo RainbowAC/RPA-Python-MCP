@@ -9,7 +9,9 @@ Usage:
     # 或通过 MCP 客户端配置启动
 """
 
+import argparse
 import asyncio
+import concurrent.futures
 import json
 import sys
 import os
@@ -28,6 +30,7 @@ from rpa_package import TaguiEngine
 # ---------------------------------------------------------------------------
 _engine = TaguiEngine()
 _lock = asyncio.Lock()
+_thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 # ---------------------------------------------------------------------------
 # MCP Server 初始化
@@ -859,15 +862,21 @@ async def handle_list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
+    loop = asyncio.get_running_loop()
     async with _lock:
         try:
-            result = await _dispatch_tool(name, arguments)
+            result = await loop.run_in_executor(_thread_pool, _dispatch_tool_sync, name, arguments)
             return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
         except Exception as e:
             return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
 
 
-async def _dispatch_tool(name: str, args: dict):
+def _dispatch_tool_sync(name: str, args: dict):
+    """同步分发器，运行在线程池中避免阻塞事件循环"""
+    return _dispatch_tool(name, args)
+
+
+def _dispatch_tool(name: str, args: dict):
     """将工具调用分发到对应的引擎方法"""
 
     # ======================== 生命周期管理 ========================
@@ -971,8 +980,9 @@ async def _dispatch_tool(name: str, args: dict):
         return {"success": _engine.wait(args.get("seconds", 5.0))}
     elif name == "rpa_timeout":
         if "seconds" in args:
-            return {"success": _engine.timeout(args["seconds"]), "timeout": _engine.timeout()}
-        return {"timeout": _engine.timeout()}
+            _engine.timeout(args["seconds"])
+            return {"success": True, "timeout": _engine.config.timeout}
+        return {"timeout": _engine.config.timeout}
     elif name == "rpa_frame":
         return {"success": _engine.frame(args.get("main_frame"), args.get("sub_frame"))}
     elif name == "rpa_popup":
@@ -1039,7 +1049,39 @@ async def _dispatch_tool(name: str, args: dict):
 # ---------------------------------------------------------------------------
 
 def main():
-    """启动 MCP 服务器"""
+    parser = argparse.ArgumentParser(
+        description="RPA for Python - MCP Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  rpa-mcp                  启动 MCP stdio 服务器（供 MCP 客户端调用）
+  rpa-mcp --version        显示版本号
+  rpa-mcp --list-tools     列出所有可用工具
+        """,
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="store_true",
+        help="显示版本号",
+    )
+    parser.add_argument(
+        "--list-tools", "-l",
+        action="store_true",
+        help="列出所有可用的 MCP 工具",
+    )
+    args = parser.parse_args()
+
+    if args.version:
+        from tagui import __version__
+        print(f"rpa-mcp {__version__}")
+        return
+
+    if args.list_tools:
+        print(f"共 {len(TOOLS)} 个 MCP 工具:\n")
+        for tool in TOOLS:
+            print(f"  {tool.name:<25s} {tool.description[:60]}")
+        return
+
     asyncio.run(_run_server())
 
 

@@ -3,7 +3,8 @@
     "rpa-python": {
       "command": "python",
       "args": [
-        "mcp_server.py"
+        "-m",
+        "mcp_server"
       ],
       "env": {}
     }

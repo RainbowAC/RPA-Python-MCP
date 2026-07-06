@@ -447,7 +447,7 @@ class TaguiEngine:
                     self._chrome = chrome_browser
                     self._started = True
                     while self._started and not self._ready():
-                        pass
+                        time.sleep(0.05)
                     if not self._started:
                         return self._handle_error('[RPA][ERROR] - TagUI process ended unexpectedly')
                     self._cleanup_files()
@@ -473,7 +473,7 @@ class TaguiEngine:
             self._write_line('echo "[RPA][FINISHED]"\n')
             self._write_line('done\n')
             while self._process.poll() is None:
-                pass
+                time.sleep(0.05)
             self._cleanup_files()
             if not self._config.debug:
                 self._io.safe_remove('rpa_python.log')
@@ -511,7 +511,7 @@ class TaguiEngine:
             self._write_line(f'{instruction}\n')
             self._write_line(f'echo "[RPA][{self._id}] - listening for inputs"\n')
             while self._started and not self._ready():
-                pass
+                time.sleep(0.05)
             if not self._started:
                 return self._handle_error('[RPA][ERROR] - TagUI process ended unexpectedly')
             self._id += 1

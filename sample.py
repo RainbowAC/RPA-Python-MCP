@@ -12,7 +12,7 @@ async def rpcall(name: str, args: dict = None):
     """封装 MCP 工具调用，返回结果字典"""
     if args is None:
         args = {}
-    return await _dispatch_tool(name, args)
+    return await asyncio.to_thread(_dispatch_tool, name, args)
 
 
 async def demo_file_text():

@@ -15,7 +15,7 @@ setup(
     author='Enterprise Technology',
     author_email='',
     url='',
-    py_modules=['tagui'],
+    py_modules=['tagui', 'mcp_server'],
     packages=['rpa_package', 'rpa_package.core'],
     install_requires=[
         'mcp>=1.0.0',
