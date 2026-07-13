@@ -15,13 +15,12 @@ RPA-Python-master/
 ├── rpa_package/              # 核心 RPA 引擎包
 │   ├── __init__.py
 │   ├── rpa.py                # 面向用户的 API（import rpa as r）
-│   ├── setup.py              # 包内 TagUI 部署逻辑
 │   └── core/
 │       ├── engine.py         # 引擎核心，方法分发
 │       ├── config.py         # 配置管理
 │       ├── exceptions.py     # 自定义异常
 │       └── io_helpers.py     # 文件/IO 辅助
-├── mcp_server.py             # MCP 服务器，暴露 40+ 个 MCP 工具
+├── mcp_server.py             # MCP 服务器，暴露 50+ 个 MCP 工具
 ├── mcp_config.json           # MCP 客户端配置模板
 ├── sample.py                 # MCP 工具调用完整示例
 ├── tagui.py                  # 顶层 TagUI 兼容模块
@@ -229,7 +228,7 @@ rpa-mcp
 
 ### MCP 工具调用示例
 
-参见 [sample.py](sample.py) — 完整演示了全部 40+ 个 MCP 工具的调用方式：
+参见 [sample.py](sample.py) — 完整演示了核心 MCP 工具的调用方式：
 
 ```bash
 python sample.py
@@ -244,9 +243,15 @@ python sample.py
 | 浏览器基础操作 | `init → status → timeout → send → url → title → timer → present → count → exist → type → read → text → dom → close` |
 | 浏览器交互 | `click / hover / dclick / rclick / select / snap / snap_element` |
 
-### 可用 MCP 工具（40+）
+### 可用 MCP 工具（50+）
 
 所有 API 方法均通过 MCP 工具暴露，命名规则为 `rpa_` 前缀，参数与 API 方法一一对应。
+
+可通过以下命令查看当前版本的实时工具数量与名称：
+
+```bash
+rpa-mcp --list-tools
+```
 
 ---
 

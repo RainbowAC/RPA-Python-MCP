@@ -15,6 +15,7 @@ import concurrent.futures
 import json
 import sys
 import os
+from typing import Any, Callable, Dict
 
 # 确保项目根目录在 Python 路径中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +37,7 @@ _thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 # MCP Server 初始化
 # ---------------------------------------------------------------------------
 server = Server("rpa-python")
+_tool_registry_validated = False
 
 
 # ---------------------------------------------------------------------------
@@ -853,6 +855,7 @@ TOOLS = [
 
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
+    _validate_tool_registry()
     return TOOLS
 
 
@@ -863,9 +866,10 @@ async def handle_list_tools() -> list[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     loop = asyncio.get_running_loop()
+    safe_arguments = arguments or {}
     async with _lock:
         try:
-            result = await loop.run_in_executor(_thread_pool, _dispatch_tool_sync, name, arguments)
+            result = await loop.run_in_executor(_thread_pool, _dispatch_tool_sync, name, safe_arguments)
             return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
         except Exception as e:
             return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
@@ -876,172 +880,334 @@ def _dispatch_tool_sync(name: str, args: dict):
     return _dispatch_tool(name, args)
 
 
+def _validate_tool_registry() -> None:
+    global _tool_registry_validated
+    if _tool_registry_validated:
+        return
+
+    tool_names = {tool.name for tool in TOOLS}
+    handler_names = set(_TOOL_HANDLERS.keys())
+
+    missing_handlers = sorted(tool_names - handler_names)
+    missing_tools = sorted(handler_names - tool_names)
+    if missing_handlers or missing_tools:
+        errors = []
+        if missing_handlers:
+            errors.append(f"missing handlers for: {', '.join(missing_handlers)}")
+        if missing_tools:
+            errors.append(f"handlers without Tool definitions: {', '.join(missing_tools)}")
+        raise RuntimeError("MCP tool registry mismatch - " + "; ".join(errors))
+
+    _tool_registry_validated = True
+
+
+def _result_with_message(success: bool, success_msg: str, failed_msg: str) -> Dict[str, Any]:
+    return {"success": success, "message": success_msg if success else failed_msg}
+
+
+def _dispatch_rpa_init(args: Dict[str, Any]) -> Dict[str, Any]:
+    success = _engine.init(
+        visual_automation=args.get("visual_automation", False),
+        chrome_browser=args.get("chrome_browser", True),
+        headless_mode=args.get("headless_mode", False),
+        turbo_mode=args.get("turbo_mode", False),
+    )
+    return _result_with_message(success, "RPA engine initialized", "RPA engine init failed")
+
+
+def _dispatch_rpa_close(_: Dict[str, Any]) -> Dict[str, Any]:
+    success = _engine.close()
+    return _result_with_message(success, "RPA engine closed", "RPA engine close failed")
+
+
+def _dispatch_rpa_setup(_: Dict[str, Any]) -> Dict[str, Any]:
+    success = _engine.setup()
+    return _result_with_message(success, "TagUI setup completed", "TagUI setup failed")
+
+
+def _dispatch_rpa_status(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "started": _engine.started,
+        "visual": _engine.visual,
+        "chrome": _engine.chrome,
+        "init_directory": _engine.init_directory,
+        "download_directory": _engine.download_directory,
+    }
+
+
+def _dispatch_rpa_url(args: Dict[str, Any]) -> Dict[str, Any]:
+    url = args.get("url")
+    if url:
+        return {"success": _engine.url(url)}
+    return {"url": _engine.url()}
+
+
+def _dispatch_rpa_timeout(args: Dict[str, Any]) -> Dict[str, Any]:
+    if "seconds" in args:
+        _engine.timeout(args["seconds"])
+        return {"success": True, "timeout": _engine.config.timeout}
+    return {"timeout": _engine.config.timeout}
+
+
+def _dispatch_rpa_download_location(args: Dict[str, Any]) -> Dict[str, Any]:
+    if "path" in args:
+        return {"success": _engine.download_location(args["path"])}
+    return {"path": _engine.download_location()}
+
+
+def _dispatch_rpa_clipboard(args: Dict[str, Any]) -> Dict[str, Any]:
+    if "text" in args:
+        return {"success": _engine.clipboard(args["text"])}
+    return {"content": _engine.clipboard()}
+
+
+def _dispatch_rpa_tagui_location(args: Dict[str, Any]) -> Dict[str, Any]:
+    if "path" in args:
+        return {"location": _engine.tagui_location(args["path"])}
+    return {"location": _engine.tagui_location()}
+
+
+def _dispatch_rpa_debug(args: Dict[str, Any]) -> Dict[str, Any]:
+    _engine.debug(args.get("enable", True))
+    return {"success": True}
+
+
+def _dispatch_rpa_error(args: Dict[str, Any]) -> Dict[str, Any]:
+    _engine.error(args.get("enable", True))
+    return {"success": True}
+
+
+def _dispatch_success_with_identifier_call(args: Dict[str, Any], method_name: str) -> Dict[str, Any]:
+    return {"success": getattr(_engine, method_name)(args["identifier"])}
+
+
+def _dispatch_rpa_click(args: Dict[str, Any]) -> Dict[str, Any]:
+    return _dispatch_success_with_identifier_call(args, "click")
+
+
+def _dispatch_rpa_rclick(args: Dict[str, Any]) -> Dict[str, Any]:
+    return _dispatch_success_with_identifier_call(args, "rclick")
+
+
+def _dispatch_rpa_dclick(args: Dict[str, Any]) -> Dict[str, Any]:
+    return _dispatch_success_with_identifier_call(args, "dclick")
+
+
+def _dispatch_rpa_hover(args: Dict[str, Any]) -> Dict[str, Any]:
+    return _dispatch_success_with_identifier_call(args, "hover")
+
+
+def _dispatch_rpa_type(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.type(args["identifier"], args["text"])}
+
+
+def _dispatch_rpa_select(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.select(args["identifier"], args["option_value"])}
+
+
+def _dispatch_rpa_keyboard(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.keyboard(args["keys"])}
+
+
+def _dispatch_rpa_mouse(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.mouse(args["action"])}
+
+
+def _dispatch_rpa_read(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"result": _engine.read(args["identifier"])}
+
+
+def _dispatch_rpa_text(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"text": _engine.text()}
+
+
+def _dispatch_rpa_title(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"title": _engine.title()}
+
+
+def _dispatch_rpa_table(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.table(args["identifier"], args["filename"])}
+
+
+def _dispatch_rpa_dom(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"result": _engine.dom(args["statement"])}
+
+
+def _dispatch_rpa_timer(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"elapsed": _engine.timer()}
+
+
+def _dispatch_rpa_snap(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.snap(args["identifier"], args["filename"])}
+
+
+def _dispatch_rpa_snap_page(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.snap_page(args.get("filename", "page.png"))}
+
+
+def _dispatch_rpa_snap_element(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.snap_element(args["identifier"], args.get("filename", "element.png"))}
+
+
+def _dispatch_rpa_exist(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"exists": _engine.exist(args["identifier"])}
+
+
+def _dispatch_rpa_present(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"present": _engine.present(args["identifier"])}
+
+
+def _dispatch_rpa_count(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"count": _engine.count(args["identifier"])}
+
+
+def _dispatch_rpa_load(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"content": _engine.load(args["filename"])}
+
+
+def _dispatch_rpa_dump(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.dump(args["text"], args["filename"])}
+
+
+def _dispatch_rpa_write(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.write(args["text"], args["filename"])}
+
+
+def _dispatch_rpa_download(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.download(args["url"], args.get("filename", ""))}
+
+
+def _dispatch_rpa_unzip(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.unzip(args["filepath"], args.get("location"))}
+
+
+def _dispatch_rpa_wait(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.wait(args.get("seconds", 5.0))}
+
+
+def _dispatch_rpa_frame(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.frame(args.get("main_frame"), args.get("sub_frame"))}
+
+
+def _dispatch_rpa_popup(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.popup(args.get("url_string"))}
+
+
+def _dispatch_rpa_upload(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.upload(args["identifier"], args["filepath"])}
+
+
+def _dispatch_rpa_focus(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.focus(args["app_name"])}
+
+
+def _dispatch_rpa_vision(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.vision(args["command"])}
+
+
+def _dispatch_rpa_mouse_xy(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"position": _engine.mouse_xy()}
+
+
+def _dispatch_rpa_mouse_x(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"x": _engine.mouse_x()}
+
+
+def _dispatch_rpa_mouse_y(_: Dict[str, Any]) -> Dict[str, Any]:
+    return {"y": _engine.mouse_y()}
+
+
+def _dispatch_rpa_run(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"output": _engine.run(args["command"])}
+
+
+def _dispatch_rpa_echo(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.echo(args["text"])}
+
+
+def _dispatch_rpa_telegram(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.telegram(args["telegram_id"], args["text"])}
+
+
+def _dispatch_rpa_get_text(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"result": _engine.get_text(args["source"], args["left"], args["right"], args.get("count", 1))}
+
+
+def _dispatch_rpa_del_chars(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"result": _engine.del_chars(args["source"], args["characters"])}
+
+
+def _dispatch_rpa_coord(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"coord": _engine.coord(args.get("x", 0), args.get("y", 0))}
+
+
+def _dispatch_rpa_send(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"success": _engine.send(args["instruction"])}
+
+
+_TOOL_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+    "rpa_init": _dispatch_rpa_init,
+    "rpa_close": _dispatch_rpa_close,
+    "rpa_setup": _dispatch_rpa_setup,
+    "rpa_status": _dispatch_rpa_status,
+    "rpa_url": _dispatch_rpa_url,
+    "rpa_click": _dispatch_rpa_click,
+    "rpa_rclick": _dispatch_rpa_rclick,
+    "rpa_dclick": _dispatch_rpa_dclick,
+    "rpa_hover": _dispatch_rpa_hover,
+    "rpa_type": _dispatch_rpa_type,
+    "rpa_select": _dispatch_rpa_select,
+    "rpa_keyboard": _dispatch_rpa_keyboard,
+    "rpa_mouse": _dispatch_rpa_mouse,
+    "rpa_read": _dispatch_rpa_read,
+    "rpa_text": _dispatch_rpa_text,
+    "rpa_title": _dispatch_rpa_title,
+    "rpa_table": _dispatch_rpa_table,
+    "rpa_dom": _dispatch_rpa_dom,
+    "rpa_timer": _dispatch_rpa_timer,
+    "rpa_snap": _dispatch_rpa_snap,
+    "rpa_snap_page": _dispatch_rpa_snap_page,
+    "rpa_snap_element": _dispatch_rpa_snap_element,
+    "rpa_exist": _dispatch_rpa_exist,
+    "rpa_present": _dispatch_rpa_present,
+    "rpa_count": _dispatch_rpa_count,
+    "rpa_load": _dispatch_rpa_load,
+    "rpa_dump": _dispatch_rpa_dump,
+    "rpa_write": _dispatch_rpa_write,
+    "rpa_download": _dispatch_rpa_download,
+    "rpa_unzip": _dispatch_rpa_unzip,
+    "rpa_wait": _dispatch_rpa_wait,
+    "rpa_timeout": _dispatch_rpa_timeout,
+    "rpa_frame": _dispatch_rpa_frame,
+    "rpa_popup": _dispatch_rpa_popup,
+    "rpa_upload": _dispatch_rpa_upload,
+    "rpa_download_location": _dispatch_rpa_download_location,
+    "rpa_focus": _dispatch_rpa_focus,
+    "rpa_clipboard": _dispatch_rpa_clipboard,
+    "rpa_vision": _dispatch_rpa_vision,
+    "rpa_mouse_xy": _dispatch_rpa_mouse_xy,
+    "rpa_mouse_x": _dispatch_rpa_mouse_x,
+    "rpa_mouse_y": _dispatch_rpa_mouse_y,
+    "rpa_run": _dispatch_rpa_run,
+    "rpa_echo": _dispatch_rpa_echo,
+    "rpa_telegram": _dispatch_rpa_telegram,
+    "rpa_get_text": _dispatch_rpa_get_text,
+    "rpa_del_chars": _dispatch_rpa_del_chars,
+    "rpa_coord": _dispatch_rpa_coord,
+    "rpa_debug": _dispatch_rpa_debug,
+    "rpa_error": _dispatch_rpa_error,
+    "rpa_tagui_location": _dispatch_rpa_tagui_location,
+    "rpa_send": _dispatch_rpa_send,
+}
+
+
 def _dispatch_tool(name: str, args: dict):
     """将工具调用分发到对应的引擎方法"""
-
-    # ======================== 生命周期管理 ========================
-    if name == "rpa_init":
-        success = _engine.init(
-            visual_automation=args.get("visual_automation", False),
-            chrome_browser=args.get("chrome_browser", True),
-            headless_mode=args.get("headless_mode", False),
-            turbo_mode=args.get("turbo_mode", False),
-        )
-        return {"success": success, "message": "RPA engine initialized" if success else "RPA engine init failed"}
-
-    elif name == "rpa_close":
-        success = _engine.close()
-        return {"success": success, "message": "RPA engine closed" if success else "RPA engine close failed"}
-
-    elif name == "rpa_setup":
-        success = _engine.setup()
-        return {"success": success, "message": "TagUI setup completed" if success else "TagUI setup failed"}
-
-    elif name == "rpa_status":
-        return {
-            "started": _engine.started,
-            "visual": _engine.visual,
-            "chrome": _engine.chrome,
-            "init_directory": _engine.init_directory,
-            "download_directory": _engine.download_directory,
-        }
-
-    # ======================== 网页导航 ========================
-    elif name == "rpa_url":
-        if "url" in args and args["url"]:
-            return {"success": _engine.url(args["url"])}
-        else:
-            return {"url": _engine.url()}
-
-    # ======================== 鼠标交互 ========================
-    elif name == "rpa_click":
-        return {"success": _engine.click(args["identifier"])}
-    elif name == "rpa_rclick":
-        return {"success": _engine.rclick(args["identifier"])}
-    elif name == "rpa_dclick":
-        return {"success": _engine.dclick(args["identifier"])}
-    elif name == "rpa_hover":
-        return {"success": _engine.hover(args["identifier"])}
-
-    # ======================== 键盘输入 ========================
-    elif name == "rpa_type":
-        return {"success": _engine.type(args["identifier"], args["text"])}
-    elif name == "rpa_select":
-        return {"success": _engine.select(args["identifier"], args["option_value"])}
-    elif name == "rpa_keyboard":
-        return {"success": _engine.keyboard(args["keys"])}
-    elif name == "rpa_mouse":
-        return {"success": _engine.mouse(args["action"])}
-
-    # ======================== 信息读取 ========================
-    elif name == "rpa_read":
-        return {"result": _engine.read(args["identifier"])}
-    elif name == "rpa_text":
-        return {"text": _engine.text()}
-    elif name == "rpa_title":
-        return {"title": _engine.title()}
-    elif name == "rpa_table":
-        return {"success": _engine.table(args["identifier"], args["filename"])}
-    elif name == "rpa_dom":
-        return {"result": _engine.dom(args["statement"])}
-    elif name == "rpa_timer":
-        return {"elapsed": _engine.timer()}
-
-    # ======================== 截图 ========================
-    elif name == "rpa_snap":
-        return {"success": _engine.snap(args["identifier"], args["filename"])}
-    elif name == "rpa_snap_page":
-        return {"success": _engine.snap_page(args.get("filename", "page.png"))}
-    elif name == "rpa_snap_element":
-        return {"success": _engine.snap_element(args["identifier"], args.get("filename", "element.png"))}
-
-    # ======================== 元素检测 ========================
-    elif name == "rpa_exist":
-        return {"exists": _engine.exist(args["identifier"])}
-    elif name == "rpa_present":
-        return {"present": _engine.present(args["identifier"])}
-    elif name == "rpa_count":
-        return {"count": _engine.count(args["identifier"])}
-
-    # ======================== 文件操作 ========================
-    elif name == "rpa_load":
-        return {"content": _engine.load(args["filename"])}
-    elif name == "rpa_dump":
-        return {"success": _engine.dump(args["text"], args["filename"])}
-    elif name == "rpa_write":
-        return {"success": _engine.write(args["text"], args["filename"])}
-    elif name == "rpa_download":
-        return {"success": _engine.download(args["url"], args.get("filename", ""))}
-    elif name == "rpa_unzip":
-        return {"success": _engine.unzip(args["filepath"], args.get("location"))}
-
-    # ======================== 流程控制 ========================
-    elif name == "rpa_wait":
-        return {"success": _engine.wait(args.get("seconds", 5.0))}
-    elif name == "rpa_timeout":
-        if "seconds" in args:
-            _engine.timeout(args["seconds"])
-            return {"success": True, "timeout": _engine.config.timeout}
-        return {"timeout": _engine.config.timeout}
-    elif name == "rpa_frame":
-        return {"success": _engine.frame(args.get("main_frame"), args.get("sub_frame"))}
-    elif name == "rpa_popup":
-        return {"success": _engine.popup(args.get("url_string"))}
-    elif name == "rpa_upload":
-        return {"success": _engine.upload(args["identifier"], args["filepath"])}
-    elif name == "rpa_download_location":
-        if "path" in args:
-            return {"success": _engine.download_location(args["path"])}
-        return {"path": _engine.download_location()}
-    elif name == "rpa_focus":
-        return {"success": _engine.focus(args["app_name"])}
-    elif name == "rpa_clipboard":
-        if "text" in args:
-            return {"success": _engine.clipboard(args["text"])}
-        return {"content": _engine.clipboard()}
-    elif name == "rpa_vision":
-        return {"success": _engine.vision(args["command"])}
-
-    # ======================== 鼠标坐标 ========================
-    elif name == "rpa_mouse_xy":
-        return {"position": _engine.mouse_xy()}
-    elif name == "rpa_mouse_x":
-        return {"x": _engine.mouse_x()}
-    elif name == "rpa_mouse_y":
-        return {"y": _engine.mouse_y()}
-
-    # ======================== 系统命令 ========================
-    elif name == "rpa_run":
-        return {"output": _engine.run(args["command"])}
-    elif name == "rpa_echo":
-        return {"success": _engine.echo(args["text"])}
-    elif name == "rpa_telegram":
-        return {"success": _engine.telegram(args["telegram_id"], args["text"])}
-
-    # ======================== 文本处理工具 ========================
-    elif name == "rpa_get_text":
-        return {"result": _engine.get_text(args["source"], args["left"], args["right"], args.get("count", 1))}
-    elif name == "rpa_del_chars":
-        return {"result": _engine.del_chars(args["source"], args["characters"])}
-    elif name == "rpa_coord":
-        return {"coord": _engine.coord(args.get("x", 0), args.get("y", 0))}
-
-    # ======================== 配置 ========================
-    elif name == "rpa_debug":
-        _engine.debug(args.get("enable", True))
-        return {"success": True}
-    elif name == "rpa_error":
-        _engine.error(args.get("enable", True))
-        return {"success": True}
-    elif name == "rpa_tagui_location":
-        if "path" in args:
-            return {"location": _engine.tagui_location(args["path"])}
-        return {"location": _engine.tagui_location()}
-    elif name == "rpa_send":
-        return {"success": _engine.send(args["instruction"])}
-
-    else:
+    _validate_tool_registry()
+    handler = _TOOL_HANDLERS.get(name)
+    if handler is None:
         raise ValueError(f"Unknown tool: {name}")
+    return handler(args)
 
 
 # ---------------------------------------------------------------------------
@@ -1057,6 +1223,7 @@ def main():
   rpa-mcp                  启动 MCP stdio 服务器（供 MCP 客户端调用）
   rpa-mcp --version        显示版本号
   rpa-mcp --list-tools     列出所有可用工具
+    rpa-mcp --validate-tools 校验工具定义与分发映射是否一致
         """,
     )
     parser.add_argument(
@@ -1069,6 +1236,11 @@ def main():
         action="store_true",
         help="列出所有可用的 MCP 工具",
     )
+    parser.add_argument(
+        "--validate-tools",
+        action="store_true",
+        help="校验 MCP 工具定义与分发映射的一致性",
+    )
     args = parser.parse_args()
 
     if args.version:
@@ -1080,6 +1252,11 @@ def main():
         print(f"共 {len(TOOLS)} 个 MCP 工具:\n")
         for tool in TOOLS:
             print(f"  {tool.name:<25s} {tool.description[:60]}")
+        return
+
+    if args.validate_tools:
+        _validate_tool_registry()
+        print(f"[OK] 工具注册一致性校验通过，共 {len(TOOLS)} 个 MCP 工具")
         return
 
     asyncio.run(_run_server())

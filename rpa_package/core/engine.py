@@ -84,13 +84,16 @@ class TaguiEngine:
         fallback = os.path.join(self._init_directory, 'rpa_python.txt') if self._init_directory else None
         return self._io.wait_for_output_file(output_file, fallback)
 
+    def _reset_runtime_state(self) -> None:
+        self._visual = False
+        self._chrome = False
+        self._started = False
+
     def _ready(self) -> bool:
         if not self._started:
             return False
         if self._process is None or self._process.poll() is not None:
-            self._visual = False
-            self._chrome = False
-            self._started = False
+            self._reset_runtime_state()
             return False
         tagui_out = self._read_line()
         if self._config.debug:
@@ -434,9 +437,7 @@ class TaguiEngine:
                     print('It leads to following output when starting TagUI -')
                     os.system(tagui_cmd)
                     print('')
-                    self._visual = False
-                    self._chrome = False
-                    self._started = False
+                    self._reset_runtime_state()
                     self._handle_error('')
                     return False
                 tagui_out = self._read_line()
@@ -456,9 +457,7 @@ class TaguiEngine:
                     self._download_directory = os.getcwd()
                     return True
         except Exception as e:
-            self._visual = False
-            self._chrome = False
-            self._started = False
+            self._reset_runtime_state()
             return self._handle_error(f'[RPA][ERROR] - {str(e)}')
 
     def close(self) -> bool:
@@ -466,9 +465,7 @@ class TaguiEngine:
             return self._handle_error('[RPA][ERROR] - use init() before using close()')
         try:
             if self._process is None or self._process.poll() is not None:
-                self._visual = False
-                self._chrome = False
-                self._started = False
+                self._reset_runtime_state()
                 return self._handle_error('[RPA][ERROR] - no active TagUI process to close()')
             self._write_line('echo "[RPA][FINISHED]"\n')
             self._write_line('done\n')
@@ -481,14 +478,10 @@ class TaguiEngine:
                 if self._init_directory:
                     self._io.safe_remove(os.path.join(self._init_directory, 'rpa_python.log'))
                     self._io.safe_remove(os.path.join(self._init_directory, 'rpa_python.txt'))
-            self._visual = False
-            self._chrome = False
-            self._started = False
+            self._reset_runtime_state()
             return True
         except Exception as e:
-            self._visual = False
-            self._chrome = False
-            self._started = False
+            self._reset_runtime_state()
             return self._handle_error(f'[RPA][ERROR] - {str(e)}')
 
     def send(self, instruction: Optional[str] = None) -> bool:
@@ -498,9 +491,7 @@ class TaguiEngine:
             return True
         try:
             if self._process is None or self._process.poll() is not None:
-                self._visual = False
-                self._chrome = False
-                self._started = False
+                self._reset_runtime_state()
                 return self._handle_error('[RPA][ERROR] - no active TagUI process to send()')
             instruction = (instruction.replace('\\', '\\\\').replace('\n', '\\n')
                            .replace('\r', '\\r').replace('\t', '\\t')
