@@ -2,18 +2,19 @@
 RPA for Python - Custom Exceptions
 """
 
+
 class RPAException(Exception):
     """Base exception for all RPA errors."""
     pass
 
 
-class TagUIInitError(RPAException):
-    """Raised when TagUI initialization fails."""
+class DesktopInitError(RPAException):
+    """Raised when desktop automation initialization fails."""
     pass
 
 
-class TagUIProcessError(RPAException):
-    """Raised when the TagUI process encounters an error."""
+class DesktopProcessError(RPAException):
+    """Raised when desktop automation execution encounters an error."""
     pass
 
 

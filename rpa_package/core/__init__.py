@@ -3,22 +3,22 @@ RPA for Python - Core Modules
 """
 from .exceptions import (
     RPAException,
-    TagUIInitError,
-    TagUIProcessError,
+    DesktopInitError,
+    DesktopProcessError,
     ElementNotFoundError,
     ConfigurationError,
 )
 from .config import Config
 from .io_helpers import IOHelper
-from .engine import TaguiEngine
+from .engine import DesktopEngine
 
 __all__ = [
-    'TaguiEngine',
+    'DesktopEngine',
     'Config',
     'IOHelper',
     'RPAException',
-    'TagUIInitError',
-    'TagUIProcessError',
+    'DesktopInitError',
+    'DesktopProcessError',
     'ElementNotFoundError',
     'ConfigurationError',
 ]

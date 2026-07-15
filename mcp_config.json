@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "rpa-python": {
+    "rpa-desktop": {
       "command": "python",
       "args": [
         "-m",

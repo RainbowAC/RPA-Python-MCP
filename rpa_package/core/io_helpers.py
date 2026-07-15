@@ -45,7 +45,7 @@ class IOHelper:
             os.remove(filename)
 
     def wait_for_output_file(self, filename: str, fallback_filename: Optional[str] = None) -> str:
-        """Wait for a TagUI output file to appear, read it, and delete it."""
+        """Wait for an output file to appear, read it, and delete it."""
         while not os.path.isfile(filename):
             if fallback_filename and os.path.isfile(fallback_filename):
                 break
